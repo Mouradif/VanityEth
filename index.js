@@ -13,7 +13,7 @@ const numCPUs = cpus().length > 1 ? cpus().length - 1 : 1;
 const argv = Yargs(process.argv.slice(2))
   .usage("Usage: $0 <command> [options]")
   .example(
-    "$0 -checksum -i B00B5",
+    "$0 --checksum -i B00B5",
     "get a wallet where address matches B00B5 in checksum format"
   )
   .example(
@@ -22,6 +22,7 @@ const argv = Yargs(process.argv.slice(2))
   )
   .example("$0 -n 25 -i ABC", "get 25 vanity wallets")
   .example("$0 -n 1000", "get 1000 random wallets")
+  .example("$0 -b -i f00", "get a wallet address starting with 0xf00 where 0 nonce contract address also matches the vanity")
   .alias("i", "input")
   .string("i")
   .describe("i", "input hex string")
@@ -36,6 +37,9 @@ const argv = Yargs(process.argv.slice(2))
   .alias("l", "log")
   .boolean("l")
   .describe("l", "log output to file")
+  .alias("b", "both")
+  .boolean("b")
+  .describe("b", "compute the vanity for both the wallet and the 0 nonce contract")
   .help("h")
   .alias("h", "help")
   .epilog("copyright 2021").argv;
@@ -43,10 +47,11 @@ const argv = Yargs(process.argv.slice(2))
 if (cluster.isMaster) {
   const args = {
     input: argv.input ? argv.input : "",
-    isChecksum: argv.checksum ? true : false,
     numWallets: argv.count ? argv.count : 1,
-    isContract: argv.contract ? true : false,
-    log: argv.log ? true : false,
+    isChecksum: Boolean(argv.checksum),
+    isContract: Boolean(argv.contract),
+    isBoth: Boolean(argv.both),
+    log: Boolean(argv.log),
     logFname: argv.log ? "VanityEth-log-" + Date.now() + ".txt" : "",
   };
   if (!VanityEth.isValidHex(args.input)) {
@@ -74,7 +79,8 @@ if (cluster.isMaster) {
     const worker_env = {
       input: args.input,
       isChecksum: args.isChecksum,
-      isContract: args.isContract,
+      isContract: args.isContract || args.isBoth,
+      isBoth: args.isBoth
     };
     const proc = cluster.fork(worker_env);
     proc.on("message", function (message) {
@@ -109,7 +115,8 @@ if (cluster.isMaster) {
             process.send({
               counter: true,
             });
-          }
+          },
+          worker_env.isBoth == "true",
         ),
       });
     }
